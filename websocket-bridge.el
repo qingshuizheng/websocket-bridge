@@ -51,22 +51,23 @@
 
 (defun websocket-bridge-message-handler (_websocket frame)
   "Message handler for given FRAME."
-  (let* ((info (json-parse-string (websocket-frame-text frame)))
-         (info-type (gethash "type" info nil)))
-    (pcase info-type
-      ("client-app-name"
-       (set
-        (intern
-         (format "websocket-bridge-client-%s"
-                 (gethash "content" info nil)))
-        _websocket))
-      ("show-message" (message (gethash "content" info nil)))
-      ("eval-code" (eval (read (gethash "content" info nil))))
-      ("fetch-var"
-       (websocket-send-text _websocket
-                            (json-encode
-                             (eval
-                              (read (gethash "content" info nil)))))))))
+  (ignore-errors
+    (let* ((info (json-parse-string (websocket-frame-text frame)))
+           (info-type (gethash "type" info nil)))
+      (pcase info-type
+        ("client-app-name"
+         (set
+          (intern
+           (format "websocket-bridge-client-%s"
+                   (gethash "content" info nil)))
+          _websocket))
+        ("show-message" (message (gethash "content" info nil)))
+        ("eval-code" (eval (read (gethash "content" info nil))))
+        ("fetch-var"
+         (websocket-send-text _websocket
+                              (json-encode
+                               (eval
+                                (read (gethash "content" info nil))))))))))
 
 (defun websocket-bridge-server-start ()
   "Start websocket bridge server."
