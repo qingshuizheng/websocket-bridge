@@ -49,73 +49,62 @@
       (kill-buffer process-buffer)
       (format "%s" (cadr port)))))
 
-(defun websocket-bridge-message-handler (_websocket frame)
+(defun websocket-bridge-message-handler (websocket frame)
   "Message handler for given FRAME."
   (ignore-errors
     (let* ((info (json-parse-string (websocket-frame-text frame)))
-           (info-type (gethash "type" info nil)))
+           (info-type (gethash "type" info nil))
+           (info-content (gethash "content" info nil)))
       (pcase info-type
-        ("client-app-name"
-         (set
-          (intern
-           (format "websocket-bridge-client-%s"
-                   (gethash "content" info nil)))
-          _websocket))
-        ("show-message" (message (gethash "content" info nil)))
-        ("eval-code" (eval (read (gethash "content" info nil))))
-        ("fetch-var"
-         (websocket-send-text _websocket
-                              (json-encode
-                               (eval
-                                (read (gethash "content" info nil))))))))))
+        ("client-app-name" (set (intern (format
+                                         "websocket-bridge-client-%s"
+                                         info-content))
+                                websocket))
+        ("show-message" (message info-content))
+        ("eval-code" (eval (read info-content)))
+        ("fetch-var" (websocket-send-text
+                      websocket
+                      (json-encode (eval (read info-content)))))))))
 
 (defun websocket-bridge-server-start ()
   "Start websocket bridge server."
   (interactive)
   (if websocket-bridge-server
       (message "[WebsocketBridge] Server has start.")
-    (progn
-      (setq
-       websocket-bridge-server-port
-       (websocket-bridge-get-free-port)
-       websocket-bridge-server
-       (websocket-server
-        websocket-bridge-server-port
-        :host 'local
-        :on-message #'websocket-bridge-message-handler
-        :on-close (lambda (_websocket))))
-      (message
-       (format "[WebsocketBridge] Server start %s"
-               websocket-bridge-server)))))
+    (setq websocket-bridge-server-port (websocket-bridge-get-free-port))
+    (setq websocket-bridge-server
+          (websocket-server
+           websocket-bridge-server-port
+           :host 'local
+           :on-message #'websocket-bridge-message-handler
+           :on-close (lambda (_websocket))))
+    (message (format "[WebsocketBridge] Server start %s"
+                     websocket-bridge-server))))
 
 (defun websocket-bridge-app-start (app-name command extension-path)
   "Start APP-NAME running COMMAND with args EXTENSION-PATH."
   (if (member app-name websocket-bridge-app-list)
       (message "[WebsocketBridge] Application %s has start." app-name)
-    (let* ((process
-            (intern (format "websocket-bridge-process-%s" app-name)))
-           (process-buffer
-            (format " *websocket-bridge-app-%s*" app-name)))
-      (progn
-        ;; Start process.
-        (setq process
-              (start-process-shell-command
-               app-name
-               process-buffer
-               (format "%s %s %s %s"
-                       command
-                       extension-path
-                       app-name
-                       websocket-bridge-server-port)))
-        ;; Make sure ANSI color render correctly.
-        (set-process-sentinel
-         process
-         (lambda (p _m)
-           (when (eq 0 (process-exit-status p))
-             (with-current-buffer (process-buffer p)
-               (ansi-color-apply-on-region (point-min) (point-max))))))
-
-        (add-to-list 'websocket-bridge-app-list app-name t)))))
+    (let* ((process (intern (format "websocket-bridge-process-%s" app-name)))
+           (process-buffer (intern (format " *websocket-bridge-app-%s*" app-name))))
+      ;; Start process
+      (setq process (start-process-shell-command
+                     app-name
+                     process-buffer
+                     (format "%s %s %s %s"
+                             command
+                             extension-path
+                             app-name
+                             websocket-bridge-server-port)))
+      ;; Make sure ANSI color render correctly
+      (set-process-sentinel
+       process
+       (lambda (p _m)
+         (when (eq 0 (process-exit-status p))
+           (with-current-buffer (process-buffer p)
+             (ansi-color-apply-on-region (point-min) (point-max))))))
+      ;; Add to app list
+      (add-to-list 'websocket-bridge-app-list app-name t))))
 
 (defun websocket-bridge-server-exit ()
   "Exit Websocket Bridge server."
